@@ -1,0 +1,13 @@
+Wordle is a "guess the word" puzzle game that took the internet by storm.
+
+- You get six tries.
+- Each guess must be a five letter word.
+- A letter is 'green' if it is in the correct spot.
+- A letter is 'yellow' if it is in the word but not in the right spot.
+- A letter is 'gray' if it is not in the word at all.
+
+Some development notes:
+- All guesses should be a valid English word; this can be done by having a file
+of valid words where the "word to guess" is randomly chosen, and all guesses
+must be within the list.
+- Convert all words to lowercase, this should simplify the searching process.
