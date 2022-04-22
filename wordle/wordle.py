@@ -9,14 +9,16 @@ def get_answers():
     with open("data/answer_words.txt", "r") as file:
         return file.read().split()
 
-def get_letters_in_answer():
+def choose_answer():
+    return random.choice(get_answers())
+
+def get_letters_in_word(word):
     letter_counts = {}
-    for c in ANSWER:
+    for c in word:
         letter_counts[c] = letter_counts.get(c, 0) + 1
     return letter_counts
 
 WORDS = get_words()
-ANSWER = random.choice(get_answers())
 
 WIDTH = 425
 HEIGHT = 550
@@ -24,13 +26,13 @@ HEIGHT = 550
 MSG_INVALID = "Invalid word!"
 MSG_LENGTH = "Word must be 5 letters!"
 MSG_WIN = "You got it!"
-MSG_LOSE = f"The word was: {ANSWER.upper()}"
+MSG_LOSE = lambda word: f"The word was: {word.upper()}"
 
 class Text(pygame.sprite.Sprite):
 
-    def __init__(self, center, font_size, text=""):
+    def __init__(self, center, font_size, text="", font="Consolas"):
         super().__init__()
-        self.font = pygame.font.SysFont("Consolas", font_size)
+        self.font = pygame.font.SysFont(font, font_size)
         self.text = text
         self.center = center
 
@@ -114,8 +116,12 @@ class TitleScene():
         self.next = self
 
         self.titles = pygame.sprite.Group()
-        self.titles.add(Text((WIDTH/2, 225), 100, "Wordle"))
-        self.titles.add(Text((WIDTH/2, 300), 35, "Press SPACE to play"))
+        self.titles.add(Text((WIDTH/2, 215), 100, "Wordle", "Rockwell"))
+        self.titles.add(Text((WIDTH/2, 285), 25, "Press SPACE to play"))
+        self.titles.add(Text((WIDTH/2, 320), 25, "Pres ESCAPE to restart"))
+
+        self.snd_start = pygame.mixer.Sound("audio/start.wav")
+        self.snd_start.set_volume(0.1)
 
     def process_input(self):
         for event in pygame.event.get():
@@ -126,6 +132,7 @@ class TitleScene():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     self.switch_to_scene(GameScene())
+                    self.snd_start.play()
 
     def render(self, surface):
         surface.fill("Black")
@@ -146,10 +153,22 @@ class GameScene():
             for c in range(5):
                 self.cells.add(Cell(80 * c + 15, 80 * r + 15))
 
+        self.snd_restart = pygame.mixer.Sound("audio/restart.wav")
+        self.snd_restart.set_volume(0.2)
+        self.snd_button = pygame.mixer.Sound("audio/button.wav")
+        self.snd_button.set_volume(0.2)
+        self.snd_win = pygame.mixer.Sound("audio/win.wav")
+        self.snd_win.set_volume(0.2)
+        self.snd_lose = pygame.mixer.Sound("audio/lose.wav")
+        self.snd_lose.set_volume(0.2)
+
+        self.answer = choose_answer()
         self.grid = self.cells.sprites()
         self.guess = ""
         self.count = 0
         self.active = True
+
+        print(f"\nAnswer: {self.answer.upper()}")
 
     def process_input(self):
         for event in pygame.event.get():
@@ -157,17 +176,25 @@ class GameScene():
                     pygame.quit()
                     exit()
 
-            if event.type == pygame.KEYDOWN and self.active:
-                if event.key == pygame.K_BACKSPACE:
-                    self.guess = self.guess[:-1]
-                    
-                elif event.key == pygame.K_RETURN:
-                    self.check_guess()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.switch_to_scene(TitleScene())
+                    self.snd_restart.play()
 
-                elif event.unicode.isalpha() and len(self.guess) < 5:
-                    self.guess += event.unicode.upper()
+                if self.active:
+                    if event.key == pygame.K_BACKSPACE and len(self.guess) > 0:
+                        self.guess = self.guess[:-1]
+                        self.snd_button.play()
+                        
+                    elif event.key == pygame.K_RETURN:
+                        self.check_guess()
+                        self.snd_button.play()
 
-                self.reload_grid()
+                    elif event.unicode.isalpha() and len(self.guess) < 5:
+                        self.guess += event.unicode.upper()
+                        self.snd_button.play()
+
+                    self.reload_grid()
 
     def render(self, surface):
         surface.fill("Black")
@@ -175,6 +202,9 @@ class GameScene():
         self.cells.update()
         self.messages.draw(surface)
         self.messages.update()
+
+    def switch_to_scene(self, scene):
+        self.next = scene
 
     def reload_grid(self):
         for i in range(5):
@@ -186,27 +216,31 @@ class GameScene():
     def check_guess(self):
         if len(self.guess) != 5:
             self.messages.add(Message(MSG_LENGTH, True))
+            self.snd_lose.play()
 
         elif self.guess.lower() not in WORDS:
             self.messages.add(Message(MSG_INVALID, True))
+            self.snd_lose.play()
 
         else:
             self.check_letters()
 
             if self.count == 5:
-                self.messages.add(Message(MSG_LOSE, False))
+                self.messages.add(Message(MSG_LOSE(self.answer), False))
                 self.active = False
+                self.snd_lose.play()
 
-            elif self.guess.lower() == ANSWER:
+            elif self.guess.lower() == self.answer:
                 self.messages.add(Message(MSG_WIN, False))
                 self.active = False
+                self.snd_win.play()
 
             else:
                 self.guess = ""
                 self.count += 1
 
     def check_letters(self):
-        answer_letters = get_letters_in_answer()
+        answer_letters = get_letters_in_word(self.answer)
 
         for j in range(3):
             for i in range(5):
@@ -214,12 +248,12 @@ class GameScene():
                 letter = cell.letter.lower()
 
                 if j == 0:
-                    if letter == ANSWER[i]:
+                    if letter == self.answer[i]:
                         cell.set_cell_color("green")
                         answer_letters[letter] -= 1
                 
                 elif j == 1:
-                    if letter in ANSWER and answer_letters[letter] > 0 and cell.color != "green":
+                    if letter in self.answer and answer_letters[letter] > 0 and cell.color != "green":
                         cell.set_cell_color("yellow")
                         answer_letters[letter] -= 1
                 
